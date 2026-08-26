@@ -18,11 +18,12 @@ Required environment variables (set as GitHub Actions secrets, never hardcoded):
 """
 
 import os
+import re
 import hmac
 import hashlib
 import base64
 import requests
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone
 from urllib.parse import urlencode
 from collections import defaultdict
 
@@ -120,6 +121,20 @@ def fetch_stock_rows(obsolete_codes: set[str]) -> list[dict]:
     return [{"sku": sku, **data} for sku, data in by_sku.items()]
 
 
+def parse_unleashed_date(raw: str | None) -> str | None:
+    """Unleashed returns dates as '/Date(1669852800000)/' (milliseconds since epoch),
+    a legacy .NET JSON convention — not a plain ISO date string. This converts it to
+    a normal 'YYYY-MM-DD' string that Postgres's date column will accept."""
+    if not raw:
+        return None
+    match = re.search(r"/Date\((-?\d+)", raw)
+    if match:
+        millis = int(match.group(1))
+        return datetime.fromtimestamp(millis / 1000, tz=timezone.utc).date().isoformat()
+    # Fallback, in case a future API response gives a plain ISO date instead
+    return raw[:10] if len(raw) >= 10 else None
+
+
 ASSEMBLY_STATUS_MAP = {
     "parked": "parked",
     "in progress": "progress",
@@ -142,10 +157,14 @@ def fetch_assembly_rows() -> list[dict]:
             "assembly_number": a.get("AssemblyNumber"),
             "product_name": a.get("Product", {}).get("ProductDescription") or a.get("AssemblyNumber"),
             "qty": float(a.get("Quantity") or 0),
-            "due_date": (a.get("AssemblyDate") or "")[:10] or None,  # see caveat in file header
+            "due_date": parse_unleashed_date(a.get("AssemblyDate")),  # see caveat in file header
             "status": status,
         })
-    return rows
+
+    # Safety net: assembly_number is the table's primary key, so duplicates would
+    # break the insert. Keep the last occurrence of each if any slip through.
+    deduped = {r["assembly_number"]: r for r in rows if r["assembly_number"]}
+    return list(deduped.values())
 
 
 def supabase_replace_table(table: str, rows: list[dict], conflict_col: str):
@@ -161,6 +180,8 @@ def supabase_replace_table(table: str, rows: list[dict], conflict_col: str):
         f"{SUPABASE_URL}/rest/v1/{table}?{conflict_col}=neq.__none__",
         headers=headers, timeout=60,
     )
+    if not del_resp.ok:
+        print(f"  Delete failed: {del_resp.status_code} {del_resp.text}")
     del_resp.raise_for_status()
 
     if not rows:
@@ -174,6 +195,8 @@ def supabase_replace_table(table: str, rows: list[dict], conflict_col: str):
             f"{SUPABASE_URL}/rest/v1/{table}",
             headers=headers, json=batch, timeout=60,
         )
+        if not ins_resp.ok:
+            print(f"  Insert failed: {ins_resp.status_code} {ins_resp.text}")
         ins_resp.raise_for_status()
 
 
