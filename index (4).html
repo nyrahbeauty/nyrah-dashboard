@@ -1,0 +1,791 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Nyrah dashboard — prototype</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+<style>
+  :root{
+    --bg:#F7F6F2;
+    --card:#FFFFFF;
+    --border:#E4E1D8;
+    --ink:#26251F;
+    --ink-soft:#635F52;
+    --ink-faint:#9B9689;
+    --accent:#2F6B5E;
+    --accent-soft:#E4EEEB;
+    --parked-bg:#EFEEE9; --parked-border:#C7C3B6; --parked-text:#5B584D;
+    --progress-bg:#FBEEDB; --progress-border:#E3B565; --progress-text:#8A5A10;
+    --done-bg:#E7F1E2; --done-border:#9BC488; --done-text:#3C6B28;
+    --critical-bg:#FBE7E5; --critical-border:#E3958D; --critical-text:#96322A;
+    --high-bg:#FBEEDB; --high-border:#E3B565; --high-text:#8A5A10;
+    --low-bg:#EFEEE9; --low-border:#C7C3B6; --low-text:#5B584D;
+    --yellow-bg:#FBF3D2; --yellow-border:#D9BE4E; --yellow-text:#7A6410;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0; padding:28px 28px 64px; background:var(--bg); color:var(--ink);
+    font-family:-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  }
+  .wrap{max-width:1280px;margin:0 auto;}
+  header{margin-bottom:20px;}
+  header h1{font-size:22px;font-weight:600;margin:0 0 4px;}
+  header p{margin:0;color:var(--ink-soft);font-size:14px;}
+  .tag{
+    display:inline-block;font-size:11px;font-weight:600;letter-spacing:.03em;
+    text-transform:uppercase;color:var(--accent);background:var(--accent-soft);
+    padding:3px 8px;border-radius:5px;margin-bottom:10px;
+  }
+
+  /* People with access */
+  .access-panel{
+    background:var(--card);border:1px solid var(--border);border-radius:10px;
+    padding:14px 16px;margin-bottom:24px;
+  }
+  .access-head{display:flex;align-items:center;justify-content:space-between;cursor:pointer;}
+  .access-head h3{font-size:13px;font-weight:600;margin:0;}
+  .access-head .count-pill{
+    font-size:11px;color:var(--ink-faint);background:var(--bg);border:1px solid var(--border);
+    padding:2px 8px;border-radius:20px;
+  }
+  .access-body{display:none;margin-top:14px;}
+  .access-body.open{display:block;}
+  .person-list{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px;}
+  .person-chip{
+    display:flex;align-items:center;gap:8px;background:var(--bg);border:1px solid var(--border);
+    border-radius:20px;padding:5px 6px 5px 12px;font-size:12px;
+  }
+  .person-chip .role{color:var(--ink-faint);}
+  .person-chip button{
+    border:none;background:var(--border);color:var(--ink-soft);width:18px;height:18px;border-radius:50%;
+    cursor:pointer;font-size:11px;line-height:1;
+  }
+  .access-form{display:flex;gap:8px;flex-wrap:wrap;}
+  .access-form input, .access-form select{
+    border:1px solid var(--border);border-radius:7px;padding:7px 10px;font-size:12px;background:var(--bg);color:var(--ink);
+  }
+  .access-form input{flex:1;min-width:160px;}
+  .access-form button{
+    border:none;background:var(--accent);color:#fff;font-size:12px;font-weight:600;
+    padding:7px 14px;border-radius:7px;cursor:pointer;
+  }
+
+  /* Tabs */
+  .tabs{display:flex;gap:4px;border-bottom:1px solid var(--border);margin-bottom:24px;}
+  .tab-btn{
+    padding:10px 18px;font-size:14px;font-weight:600;color:var(--ink-faint);
+    background:none;border:none;border-bottom:2px solid transparent;cursor:pointer;
+  }
+  .tab-btn.active{color:var(--accent);border-bottom-color:var(--accent);}
+  .tab-panel{display:none;}
+  .tab-panel.active{display:block;}
+
+  .section-block{margin-bottom:32px;}
+  .section-head{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:14px;}
+  .section-head h2{font-size:19px;font-weight:700;margin:0;}
+  .section-head span{font-size:12px;color:var(--ink-faint);}
+
+  /* Search */
+  .search-box{
+    display:flex;align-items:center;gap:8px;background:var(--card);
+    border:1px solid var(--border);border-radius:10px;padding:10px 14px;margin-bottom:14px;max-width:560px;
+  }
+  .search-box input{
+    border:none;outline:none;flex:1;font-size:14px;background:transparent;color:var(--ink);
+  }
+  .search-box input::placeholder{color:var(--ink-faint);}
+  .search-box select{
+    border:1px solid var(--border);border-radius:7px;padding:6px 8px;font-size:12px;
+    background:var(--bg);color:var(--ink-soft);
+  }
+
+  /* Landscape grid for cards */
+  .card-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:12px;}
+
+  .stat-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;}
+  .stat-tile{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:16px 18px;}
+  .stat-tile .num{font-size:26px;font-weight:700;color:var(--ink);}
+  .stat-tile .label{font-size:12px;color:var(--ink-faint);margin-top:2px;}
+
+  .upload-row{
+    display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;
+    margin-bottom:12px;
+  }
+  .upload-meta{font-size:12px;color:var(--ink-faint);}
+  .upload-btn{
+    border:1px solid var(--accent);background:var(--accent-soft);color:var(--accent);
+    font-size:13px;font-weight:600;padding:8px 16px;border-radius:8px;cursor:pointer;
+  }
+  .upload-btn:hover{background:var(--accent);color:#fff;}
+  .stale-banner{
+    background:var(--high-bg);border:1px solid var(--high-border);color:var(--high-text);
+    font-size:12px;font-weight:600;padding:10px 14px;border-radius:8px;margin-bottom:14px;
+  }
+
+  .product-card{
+    background:var(--card);border:1px solid var(--border);border-radius:10px;
+    padding:14px 16px;
+  }
+  .product-name{font-size:14px;font-weight:600;}
+  .product-code{font-size:11px;color:var(--ink-faint);font-family:ui-monospace,Menlo,monospace;margin-top:2px;}
+  .metric-row{display:flex;gap:14px;margin-top:10px;flex-wrap:wrap;}
+  .metric{font-size:11px;color:var(--ink-soft);}
+  .metric b{display:block;font-size:14px;color:var(--ink);font-weight:600;margin-top:1px;}
+  .warehouse-list{margin-top:10px;font-size:11px;color:var(--ink-soft);}
+  .warehouse-list span{display:inline-block;margin-right:12px;}
+  .no-results{color:var(--ink-faint);font-size:13px;padding:16px 4px;}
+
+  .diff-badge{
+    display:inline-block;font-size:11px;font-weight:600;padding:4px 8px;border-radius:6px;
+  }
+  .diff-orange{background:var(--high-bg);color:var(--high-text);}
+  .diff-red{background:var(--critical-bg);color:var(--critical-text);}
+  .diff-yellow{background:var(--yellow-bg);color:var(--yellow-text);}
+  .flag-row{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;}
+
+  /* Kanban */
+  .board{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;}
+  .col{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:12px;min-height:60px;}
+  .col-head{
+    display:flex;align-items:center;justify-content:space-between;
+    font-size:13px;font-weight:600;padding:4px 6px 10px;
+  }
+  .dot{width:8px;height:8px;border-radius:50%;display:inline-block;margin-right:6px;}
+  .dot-parked{background:var(--parked-text);}
+  .dot-progress{background:var(--progress-text);}
+  .dot-done{background:var(--done-text);}
+  .count{font-weight:400;color:var(--ink-faint);}
+
+  .assembly-card{
+    border-radius:8px;padding:10px 12px;margin-bottom:8px;border:1px solid;
+    font-size:13px;
+  }
+  .assembly-card:last-child{margin-bottom:0;}
+  .a-parked{background:var(--parked-bg);border-color:var(--parked-border);}
+  .a-progress{background:var(--progress-bg);border-color:var(--progress-border);}
+  .a-done{background:var(--done-bg);border-color:var(--done-border);}
+  .a-critical{background:var(--critical-bg);border-color:var(--critical-border);}
+  .a-high{background:var(--high-bg);border-color:var(--high-border);}
+  .a-low{background:var(--low-bg);border-color:var(--low-border);}
+  .a-num{font-family:ui-monospace,Menlo,monospace;font-size:11px;color:var(--ink-faint);}
+  .a-name{font-weight:600;margin:2px 0 6px;}
+  .a-meta{display:flex;justify-content:space-between;font-size:11px;color:var(--ink-soft);}
+
+  /* Issue form */
+  .issue-form{
+    display:flex;gap:8px;flex-wrap:wrap;background:var(--card);border:1px solid var(--border);
+    border-radius:10px;padding:10px;margin-bottom:14px;
+  }
+  .issue-form input{
+    flex:1;min-width:200px;border:1px solid var(--border);border-radius:7px;padding:8px 10px;
+    font-size:13px;background:var(--bg);color:var(--ink);
+  }
+  .issue-form select{
+    border:1px solid var(--border);border-radius:7px;padding:8px 10px;font-size:13px;
+    background:var(--bg);color:var(--ink);
+  }
+  .issue-form button{
+    border:none;background:var(--accent);color:#fff;font-size:13px;font-weight:600;
+    padding:8px 16px;border-radius:7px;cursor:pointer;
+  }
+
+  @media (max-width:820px){
+    .board{grid-template-columns:1fr;}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <div class="tag">Prototype · sample data</div>
+    <h1>Nyrah dashboard</h1>
+    <p>Unleashed, RWB, and current issues, in one shared view.</p>
+  </header>
+
+  <div class="access-panel">
+    <div class="access-head" onclick="toggleAccess()">
+      <h3>People with access</h3>
+      <span class="count-pill" id="accessCount">6 people</span>
+    </div>
+    <div class="access-body" id="accessBody">
+      <div class="person-list" id="personList"></div>
+      <div class="access-form">
+        <input id="personName" type="text" placeholder="Name">
+        <select id="personRole">
+          <option value="Viewer">Viewer</option>
+          <option value="Editor">Editor</option>
+        </select>
+        <button onclick="addPerson()">Invite</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="tabs">
+    <button class="tab-btn active" onclick="showTab('unleashed', this)">Unleashed</button>
+    <button class="tab-btn" onclick="showTab('rwb', this)">RWB</button>
+    <button class="tab-btn" onclick="showTab('shopify', this)">Shopify</button>
+    <button class="tab-btn" onclick="showTab('issues', this)">Issues to solve</button>
+  </div>
+
+  <!-- UNLEASHED TAB -->
+  <div class="tab-panel active" id="tab-unleashed">
+    <div class="section-block">
+      <div class="section-head">
+        <h2>Assemblies</h2>
+        <span>synced daily from Unleashed</span>
+      </div>
+      <div class="board" id="board"></div>
+    </div>
+
+    <div class="section-block">
+      <div class="section-head">
+        <h2>Stock on hand</h2>
+        <span>search by SKU or name · products and packaging</span>
+      </div>
+      <div class="search-box">
+        <span style="color:var(--ink-faint);font-size:14px;">⌕</span>
+        <input id="stockSearch" type="text" placeholder="e.g. Infuse, PK0122, or Mailer" oninput="renderStock()">
+        <select id="stockGroupFilter" onchange="renderStock()">
+          <option value="">All groups</option>
+        </select>
+      </div>
+      <div class="card-grid" id="stockResults"></div>
+    </div>
+  </div>
+
+  <!-- RWB TAB -->
+  <div class="tab-panel" id="tab-rwb">
+    <div class="section-block">
+      <div class="section-head">
+        <h2>RWB stock</h2>
+        <span>shortfall vs backorder flagged 30+ / 50+ · low stock in yellow</span>
+      </div>
+
+      <div class="upload-row">
+        <div class="upload-meta">
+          <span id="rwbLastUpdated">Last updated: 24 Aug, 09:15</span>
+        </div>
+        <input type="file" id="rwbFileInput" accept=".csv,.xlsx,.xls" style="display:none" onchange="handleRwbUpload(event)">
+        <button class="upload-btn" onclick="document.getElementById('rwbFileInput').click()">Upload latest RWB report</button>
+      </div>
+      <div class="stale-banner" id="rwbStaleBanner" style="display:none;">
+        RWB data hasn't been updated in over 48 hours — upload the latest export from the portal.
+      </div>
+
+      <div class="search-box">
+        <span style="color:var(--ink-faint);font-size:14px;">⌕</span>
+        <input id="rwbSearch" type="text" placeholder="e.g. DRENCH, or FP005815" oninput="renderRwb()">
+      </div>
+      <div class="card-grid" id="rwbResults"></div>
+    </div>
+  </div>
+
+  <!-- SHOPIFY TAB -->
+  <div class="tab-panel" id="tab-shopify">
+    <div class="section-block">
+      <div class="section-head">
+        <h2>Shopify overview</h2>
+        <span>open, unfulfilled orders</span>
+      </div>
+      <div class="stat-grid" id="shopifyStats"></div>
+    </div>
+
+    <div class="section-block">
+      <div class="section-head">
+        <h2>Units on order by product</h2>
+        <span>across all open orders</span>
+      </div>
+      <div class="search-box">
+        <span style="color:var(--ink-faint);font-size:14px;">⌕</span>
+        <input id="shopifySearch" type="text" placeholder="e.g. Infuse, or FP005815" oninput="renderShopify()">
+      </div>
+      <div class="card-grid" id="shopifyResults"></div>
+    </div>
+  </div>
+
+  <!-- ISSUES TAB -->
+  <div class="tab-panel" id="tab-issues">
+    <div class="section-block">
+      <div class="section-head">
+        <h2>Issues to solve</h2>
+        <span>shared log · anyone can add or update</span>
+      </div>
+      <div class="issue-form">
+        <input id="issueTitle" type="text" placeholder="What's the issue?">
+        <select id="issueUrgency">
+          <option value="critical">Critical</option>
+          <option value="high">High</option>
+          <option value="low" selected>Low</option>
+        </select>
+        <select id="issueStatus">
+          <option value="new" selected>New</option>
+          <option value="progress">In progress</option>
+          <option value="resolved">Resolved</option>
+        </select>
+        <button onclick="addIssue()">Add issue</button>
+      </div>
+      <div class="board" id="issueBoard"></div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+// ============================================================
+// SUPABASE CONNECTION — fill these in from Supabase → Settings → API
+// ============================================================
+const SUPABASE_URL = "PASTE_YOUR_PROJECT_URL_HERE";
+const SUPABASE_ANON_KEY = "PASTE_YOUR_ANON_PUBLIC_KEY_HERE";
+const db = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+// ============================================================
+
+// ---- Tabs ----
+function showTab(name, btn){
+  document.querySelectorAll('.tab-panel').forEach(el => el.classList.remove('active'));
+  document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
+  document.getElementById('tab-' + name).classList.add('active');
+  btn.classList.add('active');
+}
+
+// ---- People with access ----
+let people = [];
+
+function toggleAccess(){
+  document.getElementById('accessBody').classList.toggle('open');
+}
+
+async function loadPeople(){
+  const { data, error } = await db.from('people').select('*').order('invited_at');
+  if(error){ console.error(error); return; }
+  people = data;
+  renderPeople();
+}
+
+function renderPeople(){
+  document.getElementById('accessCount').textContent = people.length + ' people';
+  document.getElementById('personList').innerHTML = people.map(p => `
+    <div class="person-chip">
+      ${p.name} <span class="role">· ${p.role}</span>
+      <button onclick="removePerson('${p.id}')">✕</button>
+    </div>`).join("");
+}
+
+async function addPerson(){
+  const nameEl = document.getElementById('personName');
+  const name = nameEl.value.trim();
+  if(!name) return;
+  const role = document.getElementById('personRole').value;
+  const { error } = await db.from('people').insert({ name, role });
+  if(error){ alert("Couldn't add that person: " + error.message); return; }
+  nameEl.value = "";
+  await loadPeople();
+}
+
+async function removePerson(id){
+  const { error } = await db.from('people').delete().eq('id', id);
+  if(error){ alert("Couldn't remove that person: " + error.message); return; }
+  await loadPeople();
+}
+
+// ---- Unleashed: stock on hand ----
+let products = [];
+
+async function loadUnleashedStock(){
+  const { data, error } = await db.from('unleashed_stock').select('*').order('name');
+  if(error){ console.error(error); return; }
+  products = data.map(row => ({
+    code: row.sku,
+    name: row.name,
+    productGroup: row.product_group || "Ungrouped",
+    available: row.available,
+    allocated: row.allocated,
+    onOrder: row.on_order,
+    warehouses: (row.warehouses || []).map(w => [w.name, w.qty]),
+  }));
+  populateStockGroupFilter();
+  renderStock();
+}
+
+function populateStockGroupFilter(){
+  const select = document.getElementById("stockGroupFilter");
+  const groups = [...new Set(products.map(p => p.productGroup))].sort();
+  select.innerHTML = '<option value="">All groups</option>' + groups.map(g => `<option value="${g}">${g}</option>`).join("");
+}
+
+function renderStock(){
+  const q = document.getElementById("stockSearch").value.trim().toLowerCase();
+  const groupFilter = document.getElementById("stockGroupFilter").value;
+  const results = document.getElementById("stockResults");
+  let matches = products;
+  if(groupFilter) matches = matches.filter(p => p.productGroup === groupFilter);
+  if(q) matches = matches.filter(p => p.code.toLowerCase().includes(q) || p.name.toLowerCase().includes(q));
+
+  if(matches.length === 0){
+    results.innerHTML = '<div class="no-results">No product matches. Check the SKU, name, or group filter.</div>';
+    return;
+  }
+
+  results.innerHTML = matches.map(p => {
+    const wh = p.warehouses.map(w => "<span>"+w[0]+": "+w[1]+"</span>").join("");
+    return `
+      <div class="product-card">
+        <div class="product-name">${p.name}</div>
+        <div class="product-code">${p.code} · ${p.productGroup}</div>
+        <div class="metric-row">
+          <div class="metric">Available<b>${p.available}</b></div>
+          <div class="metric">Allocated<b>${p.allocated}</b></div>
+          <div class="metric">On order<b>${p.onOrder}</b></div>
+        </div>
+        <div class="warehouse-list">${wh}</div>
+      </div>`;
+  }).join("");
+}
+
+// ---- Unleashed: assembly kanban ----
+let assemblies = [];
+
+async function loadAssemblies(){
+  const { data, error } = await db.from('assemblies').select('*').order('due_date');
+  if(error){ console.error(error); return; }
+  assemblies = data.map(row => ({
+    num: row.assembly_number,
+    name: row.product_name,
+    qty: row.qty,
+    due: row.due_date ? new Date(row.due_date).toLocaleDateString('en-IE', { day:'2-digit', month:'short' }) : "—",
+    status: row.status,
+  }));
+  renderBoard();
+}
+
+const columns = [
+  { key:"parked", label:"Parked", dot:"dot-parked", cardClass:"a-parked" },
+  { key:"progress", label:"In progress", dot:"dot-progress", cardClass:"a-progress" },
+  { key:"done", label:"Completed", dot:"dot-done", cardClass:"a-done" },
+];
+
+function renderBoard(){
+  const board = document.getElementById("board");
+  board.innerHTML = columns.map(col => {
+    const items = assemblies.filter(a => a.status === col.key);
+    const cards = items.map(a => `
+      <div class="assembly-card ${col.cardClass}">
+        <div class="a-num">${a.num}</div>
+        <div class="a-name">${a.name}</div>
+        <div class="a-meta"><span>Qty ${a.qty}</span><span>Due ${a.due}</span></div>
+      </div>`).join("");
+    return `
+      <div class="col">
+        <div class="col-head"><span><span class="dot ${col.dot}"></span>${col.label}</span><span class="count">${items.length}</span></div>
+        ${cards || '<div class="no-results">Nothing here</div>'}
+      </div>`;
+  }).join("");
+}
+
+// ---- RWB: from the real export columns, restricted to the 7 fields requested ----
+let rwbItems = [];
+let rwbLastUpdated = null;
+
+async function loadRwb(){
+  const { data, error } = await db.from('rwb_stock').select('*').order('name');
+  if(error){ console.error(error); return; }
+  rwbItems = data.map(row => ({
+    sku: row.sku, name: row.name, stockLevel: row.stock_level,
+    allocated: row.allocated, onHand: row.on_hand, onOrder: row.on_order, backorder: row.backorder,
+  }));
+  renderRwb();
+
+  const log = await db.from('rwb_upload_log').select('*').eq('id', 1).single();
+  if(log.data){
+    rwbLastUpdated = new Date(log.data.uploaded_at);
+    updateRwbFreshness();
+  }
+}
+
+// ---- RWB upload: reads the export the same way it comes out of the RWB portal ----
+// Client,SKU,Name,Price,Weight,Warehouse,DefaultPickingLocation,Discontinued,StockLevel,Allocated,OnHand,OffHand,AwaitingReplen,OnOrder,RequiredByBackOrder,InQuarantine,InTransit,InTransition,Scrapped
+const RWB_COLUMN_MAP = {
+  sku: ["sku"],
+  name: ["name"],
+  stockLevel: ["stocklevel"],
+  allocated: ["allocated"],
+  onHand: ["onhand"],
+  onOrder: ["onorder"],
+  backorder: ["requiredbybackorder"],
+};
+
+function mapRwbRow(headerIndex, row){
+  const get = (keyList) => {
+    for(const key of keyList){
+      if(headerIndex[key] !== undefined) return row[headerIndex[key]];
+    }
+    return undefined;
+  };
+  const sku = (get(RWB_COLUMN_MAP.sku) || "").toString().trim();
+  return {
+    sku,
+    name: (get(RWB_COLUMN_MAP.name) || "").toString().trim(),
+    stockLevel: Number(get(RWB_COLUMN_MAP.stockLevel)) || 0,
+    allocated: Number(get(RWB_COLUMN_MAP.allocated)) || 0,
+    onHand: Number(get(RWB_COLUMN_MAP.onHand)) || 0,
+    onOrder: Number(get(RWB_COLUMN_MAP.onOrder)) || 0,
+    backorder: Number(get(RWB_COLUMN_MAP.backorder)) || 0,
+  };
+}
+
+function isRealProduct(sku){
+  // RWB's export includes packaging, labels, and despatch-note placeholder rows alongside
+  // real products. Keep only genuine product SKUs (the FP prefix used across Unleashed too).
+  return /^FP/i.test(sku);
+}
+
+function parseCsvText(text){
+  // Handles quoted fields with commas inside them, which the RWB export uses (e.g. product names).
+  const rows = [];
+  let row = [], field = "", inQuotes = false;
+  for(let i = 0; i < text.length; i++){
+    const c = text[i];
+    if(inQuotes){
+      if(c === '"'){
+        if(text[i+1] === '"'){ field += '"'; i++; } else { inQuotes = false; }
+      } else { field += c; }
+    } else {
+      if(c === '"'){ inQuotes = true; }
+      else if(c === ','){ row.push(field); field = ""; }
+      else if(c === '\n' || c === '\r'){
+        if(field.length || row.length){ row.push(field); rows.push(row); }
+        row = []; field = "";
+        if(c === '\r' && text[i+1] === '\n') i++;
+      } else { field += c; }
+    }
+  }
+  if(field.length || row.length){ row.push(field); rows.push(row); }
+  return rows;
+}
+
+function rowsToRwbItems(rows){
+  if(rows.length === 0) return [];
+  const headerIndex = {};
+  rows[0].forEach((h, i) => { headerIndex[h.trim().toLowerCase().replace(/^\uFEFF/, "")] = i; });
+  const items = [];
+  for(let i = 1; i < rows.length; i++){
+    if(rows[i].length < 2) continue;
+    const item = mapRwbRow(headerIndex, rows[i]);
+    if(item.sku && isRealProduct(item.sku)) items.push(item);
+  }
+  return items;
+}
+
+function handleRwbUpload(event){
+  const file = event.target.files[0];
+  if(!file) return;
+  const isExcel = /\.(xlsx|xls)$/i.test(file.name);
+  const reader = new FileReader();
+
+  reader.onload = async function(e){
+    let items = [];
+    try {
+      if(isExcel){
+        const workbook = XLSX.read(e.target.result, { type: "binary" });
+        const sheet = workbook.Sheets[workbook.SheetNames[0]];
+        const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: true });
+        items = rowsToRwbItems(rows);
+      } else {
+        const rows = parseCsvText(e.target.result);
+        items = rowsToRwbItems(rows);
+      }
+    } catch(err){
+      alert("Couldn't read that file. Make sure it's the RWB export, unedited, as a .csv or .xlsx.");
+      return;
+    }
+
+    if(items.length === 0){
+      alert("No product rows found. Check this is the right file, and that the column headers weren't changed.");
+      return;
+    }
+
+    const uploadedBy = prompt("Quick check — what's your name? (shown on the last-updated log)") || "Unknown";
+
+    // Replace the whole table with this upload's contents, so discontinued
+    // SKUs that dropped out of the export don't linger with stale numbers.
+    const del = await db.from('rwb_stock').delete().neq('sku', '__none__');
+    if(del.error){ alert("Couldn't clear old RWB data: " + del.error.message); return; }
+
+    const dbRows = items.map(r => ({
+      sku: r.sku, name: r.name, stock_level: r.stockLevel,
+      allocated: r.allocated, on_hand: r.onHand, on_order: r.onOrder, backorder: r.backorder,
+    }));
+    const ins = await db.from('rwb_stock').insert(dbRows);
+    if(ins.error){ alert("Couldn't save the new RWB data: " + ins.error.message); return; }
+
+    await db.from('rwb_upload_log').update({ uploaded_at: new Date().toISOString(), uploaded_by: uploadedBy }).eq('id', 1);
+
+    await loadRwb();
+    event.target.value = "";
+    alert(`Updated ${items.length} products from the RWB export.`);
+  };
+
+  if(isExcel){ reader.readAsBinaryString(file); } else { reader.readAsText(file); }
+}
+
+function updateRwbFreshness(){
+  const stamp = document.getElementById("rwbLastUpdated");
+  const banner = document.getElementById("rwbStaleBanner");
+  const hoursAgo = (Date.now() - rwbLastUpdated.getTime()) / (1000 * 60 * 60);
+  stamp.textContent = "Last updated: " + rwbLastUpdated.toLocaleString("en-IE", { day:"2-digit", month:"short", hour:"2-digit", minute:"2-digit" });
+  banner.style.display = hoursAgo > 48 ? "block" : "none";
+}
+
+function renderRwb(){
+  const q = document.getElementById("rwbSearch").value.trim().toLowerCase();
+  const results = document.getElementById("rwbResults");
+  const matches = q ? rwbItems.filter(r => r.sku.toLowerCase().includes(q) || r.name.toLowerCase().includes(q)) : rwbItems;
+
+  if(matches.length === 0){
+    results.innerHTML = '<div class="no-results">No product matches "'+q+'" in the RWB export.</div>';
+    return;
+  }
+
+  results.innerHTML = matches.map(r => {
+    // Coverage = stock level (which already includes what's allocated to orders) + what's on order.
+    // Compare that coverage against what's required by back order.
+    const coverage = r.stockLevel + r.onOrder;
+    const shortfall = r.backorder - coverage;
+
+    const flags = [];
+    if(shortfall >= 50){
+      flags.push(`<span class="diff-badge diff-red">Short by ${shortfall}</span>`);
+    } else if(shortfall >= 30){
+      flags.push(`<span class="diff-badge diff-orange">Short by ${shortfall}</span>`);
+    }
+    // Low stock level flag, independent of the backorder comparison. Threshold set at 50 units — adjust to whatever "getting low" means per SKU.
+    if(r.stockLevel < 50){
+      flags.push(`<span class="diff-badge diff-yellow">Stock getting low</span>`);
+    }
+
+    return `
+      <div class="product-card">
+        <div class="product-name">${r.name}</div>
+        <div class="product-code">${r.sku}</div>
+        <div class="metric-row">
+          <div class="metric">Stock level<b>${r.stockLevel}</b></div>
+          <div class="metric">Allocated<b>${r.allocated}</b></div>
+          <div class="metric">On hand<b>${r.onHand}</b></div>
+          <div class="metric">On order<b>${r.onOrder}</b></div>
+          <div class="metric">Backorder req.<b>${r.backorder}</b></div>
+        </div>
+        ${flags.length ? `<div class="flag-row">${flags.join("")}</div>` : ""}
+      </div>`;
+  }).join("");
+}
+
+// ---- Shopify: open order overview ----
+let shopifyOverview = { openOrders: 0, unitsOnOrder: 0, unfulfilled48h: 0 };
+let shopifyOnOrder = [];
+
+async function loadShopify(){
+  const ov = await db.from('shopify_overview').select('*').eq('id', 1).single();
+  if(ov.data){
+    shopifyOverview = {
+      openOrders: ov.data.open_orders,
+      unitsOnOrder: ov.data.units_on_order,
+      unfulfilled48h: ov.data.unfulfilled_48h,
+    };
+  }
+  renderShopifyStats();
+
+  const li = await db.from('shopify_line_items').select('*').order('units_on_order', { ascending: false });
+  if(li.data){
+    shopifyOnOrder = li.data.map(row => ({ code: row.sku, name: row.name, units: row.units_on_order, orders: row.order_count }));
+  }
+  renderShopify();
+}
+
+function renderShopifyStats(){
+  const box = document.getElementById("shopifyStats");
+  box.innerHTML = `
+    <div class="stat-tile"><div class="num">${shopifyOverview.openOrders}</div><div class="label">Open orders</div></div>
+    <div class="stat-tile"><div class="num">${shopifyOverview.unitsOnOrder}</div><div class="label">Total units on order</div></div>
+    <div class="stat-tile"><div class="num">${shopifyOverview.unfulfilled48h}</div><div class="label">Unfulfilled 48h+</div></div>
+  `;
+}
+
+function renderShopify(){
+  const q = document.getElementById("shopifySearch").value.trim().toLowerCase();
+  const results = document.getElementById("shopifyResults");
+  const matches = q ? shopifyOnOrder.filter(s => s.code.toLowerCase().includes(q) || s.name.toLowerCase().includes(q)) : shopifyOnOrder;
+
+  if(matches.length === 0){
+    results.innerHTML = '<div class="no-results">No product matches "'+q+'".</div>';
+    return;
+  }
+
+  results.innerHTML = matches.map(s => `
+    <div class="product-card">
+      <div class="product-name">${s.name}</div>
+      <div class="product-code">${s.code}</div>
+      <div class="metric-row">
+        <div class="metric">Units on order<b>${s.units}</b></div>
+        <div class="metric">Orders<b>${s.orders}</b></div>
+      </div>
+    </div>`).join("");
+}
+// ---- Issues to solve ----
+let issues = [];
+
+async function loadIssues(){
+  const { data, error } = await db.from('issues').select('*').order('created_at', { ascending: false });
+  if(error){ console.error(error); return; }
+  issues = data.map(row => ({ id: row.id, title: row.title, urgency: row.urgency, status: row.status, by: row.created_by || "Unknown" }));
+  renderIssues();
+}
+
+const issueColumns = [
+  { key:"new", label:"New" },
+  { key:"progress", label:"In progress" },
+  { key:"resolved", label:"Resolved" },
+];
+
+const urgencyLabel = { critical:"Critical", high:"High", low:"Low" };
+const urgencyClass = { critical:"a-critical", high:"a-high", low:"a-low" };
+
+function renderIssues(){
+  const board = document.getElementById("issueBoard");
+  board.innerHTML = issueColumns.map(col => {
+    const items = issues.filter(i => i.status === col.key);
+    const cards = items.map(i => `
+      <div class="assembly-card ${urgencyClass[i.urgency]}">
+        <div class="a-name">${i.title}</div>
+        <div class="a-meta"><span>${urgencyLabel[i.urgency]}</span><span>${i.by}</span></div>
+      </div>`).join("");
+    return `
+      <div class="col">
+        <div class="col-head"><span>${col.label}</span><span class="count">${items.length}</span></div>
+        ${cards || '<div class="no-results">Nothing here</div>'}
+      </div>`;
+  }).join("");
+}
+
+async function addIssue(){
+  const titleEl = document.getElementById("issueTitle");
+  const title = titleEl.value.trim();
+  if(!title) return;
+  const urgency = document.getElementById("issueUrgency").value;
+  const status = document.getElementById("issueStatus").value;
+  const by = prompt("Quick check — what's your name? (shown on the card)") || "Unknown";
+  const { error } = await db.from('issues').insert({ title, urgency, status, created_by: by });
+  if(error){ alert("Couldn't add that issue: " + error.message); return; }
+  titleEl.value = "";
+  await loadIssues();
+}
+
+loadPeople();
+loadUnleashedStock();
+loadAssemblies();
+loadRwb();
+loadShopify();
+loadIssues();
+</script>
+</body>
+</html>
