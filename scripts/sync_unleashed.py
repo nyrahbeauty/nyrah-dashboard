@@ -22,6 +22,7 @@ import hmac
 import hashlib
 import base64
 import requests
+from datetime import date, timedelta
 from urllib.parse import urlencode
 from collections import defaultdict
 
@@ -66,7 +67,7 @@ def unleashed_get_all_pages(endpoint: str, params: dict | None = None) -> list[d
                 "api-auth-signature": unleashed_signature(query_string),
                 "client-type": CLIENT_TYPE,
             },
-            timeout=30,
+            timeout=60,
         )
         resp.raise_for_status()
         data = resp.json()
@@ -127,7 +128,10 @@ ASSEMBLY_STATUS_MAP = {
 
 
 def fetch_assembly_rows() -> list[dict]:
-    raw = unleashed_get_all_pages("Assemblies", {"includeObsolete": "false"})
+    # Without a date filter, this pulls every assembly since the account began,
+    # which is slow and unnecessary — the dashboard only needs recent/current ones.
+    start_date = (date.today() - timedelta(days=30)).isoformat()
+    raw = unleashed_get_all_pages("Assemblies", {"includeObsolete": "false", "startDate": start_date})
     rows = []
     for a in raw:
         status_raw = (a.get("AssemblyStatus") or "").strip().lower()
@@ -155,7 +159,7 @@ def supabase_replace_table(table: str, rows: list[dict], conflict_col: str):
     # SKUs or assemblies linger with outdated numbers.
     del_resp = requests.delete(
         f"{SUPABASE_URL}/rest/v1/{table}?{conflict_col}=neq.__none__",
-        headers=headers, timeout=30,
+        headers=headers, timeout=60,
     )
     del_resp.raise_for_status()
 
@@ -168,7 +172,7 @@ def supabase_replace_table(table: str, rows: list[dict], conflict_col: str):
         batch = rows[i:i + batch_size]
         ins_resp = requests.post(
             f"{SUPABASE_URL}/rest/v1/{table}",
-            headers=headers, json=batch, timeout=30,
+            headers=headers, json=batch, timeout=60,
         )
         ins_resp.raise_for_status()
 
